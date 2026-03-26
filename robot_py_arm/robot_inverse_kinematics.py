@@ -28,21 +28,18 @@ class RobotInverseKinematics(Node):
         self.end_effector_x = 0.0
         self.end_effector_y = 0.0
         
-        # Inverse kinematics için hedef pozisyonlar
         self.target_x = 0.0
         self.target_y = 0.0
 
 
 
     def target_callback(self, msg):
-        """Hedef pozisyonları al"""
 
         self.target_x=msg.data[0]
         self.target_y=msg.data[1]
 
 
     def joint_state_callback(self, msg):
-        """Mevcut joint pozisyonlarını al"""
         joint_positions = {}
         L1 = 331.24
         L2 = 300.0
@@ -50,14 +47,12 @@ class RobotInverseKinematics(Node):
         for i, name in enumerate(msg.name):
             joint_positions[name] = msg.position[i]
         
-        # Joint açılarını al
         self.current_1 = math.degrees(joint_positions.get("First_axis_joint", 0.0)) 
         self.current_2 = math.degrees(joint_positions.get("Second_axis_joint", 0.0)) 
         self.current_3 = math.degrees(joint_positions.get("Third_axis_joint", 0.0))
         self.current_4 = joint_positions.get("left_gripper_hand_joint", 0.0)
         self.current_5 = joint_positions.get("right_gripper_hand_joint", 0.0)
 
-        # Forward Kinematics - Mevcut end-effector pozisyonu
         q1_rad = math.radians(self.current_1)
         q2_rad = math.radians(self.current_2)
 
@@ -66,23 +61,18 @@ class RobotInverseKinematics(Node):
         
         
 
-        # Inverse Kinematics - Hedef açıları hesapla
-        x_d = self.target_x  # Hedef X (başka fonksiyondan geliyor)
-        y_d = -1*self.target_y  # Hedef Y (başka fonksiyondan geliyor)
+        x_d = self.target_x 
+        y_d = -1*self.target_y 
         
-        # 1. r² hesapla
         r_squared = x_d**2 + y_d**2
         r = math.sqrt(r_squared)
         
-        # 2. D değişkeni
         D = (r_squared - L1**2 - L2**2) / (2 * L1 * L2)
         
-        # 3. Erişim kontrolü
         if abs(D) > 1:
             self.get_logger().warn(f"⚠️ OUT_OF_REACH: Target({x_d:.1f}, {y_d:.1f}), |D|={abs(D):.3f}")
             return
         
-        # 4. İki çözümü hesapla
         # Elbow-up
         q2_up = math.atan2(+math.sqrt(1 - D**2), D)
         q1_up = math.atan2(y_d, x_d) - math.atan2(L2 * math.sin(q2_up), L1 + L2 * math.cos(q2_up))
@@ -91,7 +81,6 @@ class RobotInverseKinematics(Node):
         q2_down = math.atan2(-math.sqrt(1 - D**2), D)
         q1_down = math.atan2(y_d, x_d) - math.atan2(L2 * math.sin(q2_down), L1 + L2 * math.cos(q2_down))
         
-        # 5. Mevcut açıya en yakın olanı seç
         dist_up = math.sqrt((q1_up - q1_rad)**2 + (q2_up - q2_rad)**2)
         dist_down = math.sqrt((q1_down - q1_rad)**2 + (q2_down - q2_rad)**2)
         
@@ -104,7 +93,6 @@ class RobotInverseKinematics(Node):
             q2_target = q2_down
             config = "elbow-down"
         
-        # 6. Hedef açıları dereceye çevir ve kaydet
         q3_target=math.atan2(y_d, x_d+39.0)-q1_target-q2_target+1.5709
 
         x_current = L1 * math.cos(q1_rad) + L2 * math.cos(q1_rad + q2_rad)  

@@ -38,14 +38,13 @@ class PID:
         self.output = 0.0
 
     def update(self, error, dt):
-        # Deadzone uygulaması
         if abs(error) < DEADZONE:
             error = 0.0
 
         self.error = error
         derivative = (error - self.error_last) / dt
         self.integral += error * dt
-        self.integral = np.clip(self.integral, -10, 10)  # anti-windup artırıldı
+        self.integral = np.clip(self.integral, -10, 10)
         output = self.kp * error + self.ki * self.integral + self.kd * derivative
         self.error_last = error
         return np.clip(output, MIN_OUTPUT, MAX_OUTPUT)
@@ -55,19 +54,15 @@ class MultiJointPIDNode(Node):
     def __init__(self):
         super().__init__('multi_joint_pid_controller')
 
-        # 5 adet PID controller oluştur
         self.pids = [PID(KP[i], KI[i], KD[i]) for i in range(5)]
         
-        # Hedef ve mevcut pozisyonlar
         self.target_positions = [0.0] * 5
         self.current_positions = [0.0] * 5
         self.errors = [0.0] * 5
         self.outputs = [0.0] * 5
         
-        # Joint state alındı mı kontrolü
         self.joint_state_received = False
 
-        # Subscribers
         self.create_subscription(
             Float64MultiArray, 
             'target_angle_position', 
@@ -82,26 +77,21 @@ class MultiJointPIDNode(Node):
             10
         )
 
-        # Publisher
         self.pub_velocity = self.create_publisher(
             Float64MultiArray, 
             'forward_velocity_controller/commands', 
             10
         )
 
-        # Grafik verileri
         self.time_data = []
         self.error_data = [[] for _ in range(5)]
         self.output_data = [[] for _ in range(5)]
         self.start_time = time.time()
 
-        # Debug counter
         self.debug_counter = 0
 
-        # Timer
         self.create_timer(TIME_STEP, self.update)
         
-        # Grafik thread'i
         threading.Thread(target=self.plot_live, daemon=True).start()
         
         self.get_logger().info("Multi-Joint PID controller started.")
@@ -111,7 +101,6 @@ class MultiJointPIDNode(Node):
         self.get_logger().info(f"KD: {KD}")
 
     def target_callback(self, msg):
-        """Hedef pozisyonları al"""
         if len(msg.data) >= 5:
             self.target_positions = list(msg.data[:5])
             self.get_logger().info(f"🎯 New target: {[f'{x:.3f}' for x in self.target_positions]}")
@@ -119,10 +108,8 @@ class MultiJointPIDNode(Node):
             self.get_logger().warn(f"Invalid target position array length: {len(msg.data)}")
 
     def joint_state_callback(self, msg):
-        """Mevcut joint pozisyonlarını al"""
         self.joint_state_received = True
         
-        # DEBUG: Joint states mesajını kontrol et
         if self.debug_counter % 100 == 0:
             self.get_logger().info(f"📊 Joint names in message: {msg.name}")
         
@@ -135,21 +122,17 @@ class MultiJointPIDNode(Node):
                     self.get_logger().warn(f"⚠️  Joint '{joint_name}' NOT FOUND in joint_states!")
 
     def update(self):
-        """PID güncellemesi ve hız komutlarını yayınla"""
         
-        # Joint state alınmadıysa bekle
         if not self.joint_state_received:
             if self.debug_counter % 50 == 0:
                 self.get_logger().warn("Waiting for joint_states...")
             self.debug_counter += 1
             return
         
-        # Her joint için hata hesapla ve PID güncelle
         for i in range(5):
             self.errors[i] = self.target_positions[i] - self.current_positions[i]
             self.outputs[i] = self.pids[i].update(self.errors[i], TIME_STEP)
 
-        # DEBUG: Her 100 iterasyonda bir detaylı log
         self.debug_counter += 1
         if self.debug_counter % 100 == 0:
             self.get_logger().info("=" * 80)
@@ -164,16 +147,13 @@ class MultiJointPIDNode(Node):
                 )
             self.get_logger().info("=" * 80)
 
-        # Hız komutlarını yayınla
         vel_msg = Float64MultiArray()
-        vel_msg.data = self.outputs.copy()  # Copy kullan
+        vel_msg.data = self.outputs.copy() 
         self.pub_velocity.publish(vel_msg)
         
-        # DEBUG: Gönderilen mesajı kontrol et
         if self.debug_counter % 100 == 0:
             self.get_logger().info(f"🚀 Published velocities: {[f'{x:.3f}' for x in vel_msg.data]}")
 
-        # Grafik verileri
         t = time.time() - self.start_time
         self.time_data.append(t)
         for i in range(5):
@@ -181,7 +161,6 @@ class MultiJointPIDNode(Node):
             self.output_data[i].append(self.outputs[i])
 
     def plot_live(self):
-        """Canlı grafik çizimi - Node çalıştığı sürece KESINLIKLE devam eder"""
         import matplotlib
         matplotlib.use('TkAgg')
         
@@ -190,13 +169,11 @@ class MultiJointPIDNode(Node):
         
         colors = ['blue', 'red', 'green', 'orange', 'purple']
         
-        # Hata grafikleri
         error_lines = []
         for i in range(5):
             line, = ax1.plot([], [], label=f'{JOINT_NAMES[i]}', color=colors[i], linewidth=2)
             error_lines.append(line)
         
-        # Output grafikleri
         output_lines = []
         for i in range(5):
             line, = ax2.plot([], [], label=f'{JOINT_NAMES[i]}', color=colors[i], linewidth=2)
